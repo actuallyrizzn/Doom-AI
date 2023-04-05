@@ -26,15 +26,18 @@ class CNN(nn.Module):
         """ CNN with 3 convolutional layers and 1 hidden layer """
         
         super(CNN, self).__init__() # Activate inheritance to use tools from nn.Module
-        self.convolution1 # Convolution connections
-        self.convolution2
-        self.convolution3
+        # Convolution connections
+        self.convolution1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5) # applies convolution to the input images
+        self.convolution2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3) 
+        self.convolution3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=2) 
         # Flatten pixels obtained by the convolutions that were applied to get a vector
         # Vector that will be used as the input for the NN
-        self.fc1
-        self.fc2
+        self.fc1 = nn.Linear(in_features=self.count_neurons(), out_features=40) # Full connection between input layer (vector) and hidden layer
+        self.fc2 = nn.Linear(in_features=40, out_features=number_actions) # Full connection between the hidden layer and output layer composed on the output neurons that correspond to a Q value of the possible actions
         
-
+    def count_neurons(self):
+        """ Count the number of pixels """
+        return 0
 
 # Making the body
 
