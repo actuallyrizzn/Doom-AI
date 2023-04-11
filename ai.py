@@ -57,9 +57,10 @@ class CNN(nn.Module):
         """
         Propage the signals from the flattening layer to the hidden layer
         of the fully connected network. Then activate the neurons of this hidden 
-        layer by breaking the linearity with ReLU. :astly, propagate the signals
+        layer by breaking the linearity with ReLU. Lastly, propagate the signals
         from the hidden layer to the output layer with the final output neurons.
-        @param x: input image
+        :param x: input image
+        :return: output
         """
         kernal_size = 3
         stride = 2
@@ -71,9 +72,20 @@ class CNN(nn.Module):
         x = self.fc2(x)
         return x
 
-# Making the body
+# Making the body; the action based on the output from the brain (using softmax)
+class SoftmaxAIBody(nn.Module):
 
+    def __init__(self, temperature):
+        super(SoftmaxAIBody, self).__init__()
+        self.T = temperature
 
+    def forward():
+        """
+        Forward the output signal from the brain (the Q values contained in the output 
+        neurons of the output layer) to the body which will play the action
+        :param :
+        :return: The action to be played
+        """
 
 # Assemble the brain and the body to make the AI 
 
