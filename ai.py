@@ -53,6 +53,24 @@ class CNN(nn.Module):
         # Flattening layer
         return x.data.view(1, -1).size(1) # Takes all pixels of all the third layer channels and puts them in a vector (input of the fully connected network)
 
+    def forward(self, x):
+        """
+        Propage the signals from the flattening layer to the hidden layer
+        of the fully connected network. Then activate the neurons of this hidden 
+        layer by breaking the linearity with ReLU. :astly, propagate the signals
+        from the hidden layer to the output layer with the final output neurons.
+        @param x: input image
+        """
+        kernal_size = 3
+        stride = 2
+        x = F.relu(F.max_pool2d(self.convolution1(x), kernal_size, stride)) # First convolutional layer with max pooling and ReLU activation
+        x = F.relu(F.max_pool2d(self.convolution2(x), kernal_size, stride)) # Propagate images from first to second convolutional layer
+        x = F.relu(F.max_pool2d(self.convolution3(x), kernal_size, stride)) # Propagate images from second to third convolutional layer
+        x = x.view(x.size(0), -1) # Flattening layer
+        x = F.relu(self.fc1(x)) # Pass signal with linear transmission and break linearity with rectifier function ReLU
+        x = self.fc2(x)
+        return x
+
 # Making the body
 
 
