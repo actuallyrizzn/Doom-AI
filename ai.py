@@ -79,13 +79,17 @@ class SoftmaxAIBody(nn.Module):
         super(SoftmaxAIBody, self).__init__()
         self.T = temperature
 
-    def forward():
+    def forward(self, output_signals):
         """
         Forward the output signal from the brain (the Q values contained in the output 
-        neurons of the output layer) to the body which will play the action
-        :param :
+        neurons of the output layer) to the body of the AI which will play the action
+        :param output_signals: The outputs from the brain
         :return: The action to be played
         """
+        # use softmax to play the action
+        probabilities = F.softmax(output_signals * self.T) # distribution of probabilities for each of our Q-values which depend on the input image and each action
+        actions = probabilities.multinomial()
+        return actions
 
 # Assemble the brain and the body to make the AI 
 
