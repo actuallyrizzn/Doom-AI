@@ -92,7 +92,17 @@ class SoftmaxAIBody(nn.Module):
         return actions
 
 # Assemble the brain and the body to make the AI 
-
+class AI:
+    
+    def __init__(self, brain, body):
+        self.brain = brain
+        self.body = body
+    
+    def __call__(self, inputs):
+        """
+        Take the images as input and propagate the signals
+        in the brain
+        """
 
 
 
