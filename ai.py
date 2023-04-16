@@ -98,13 +98,16 @@ class AI:
         self.brain = brain
         self.body = body
     
-    def __call__(self, inputs):
+    def __call__(self, input_images):
         """
-        Take the images as input and propagate the signals
-        in the brain
+        Take the images as input and propagate the signals in the brain
         """
-
-
+        # convert image into the right format
+        input = Variable(torch.from_numpy(np.array(input_images, dtype = np.float32)))
+        # take the brain and apply to input images
+        output = self.brain(input)
+        actions = self.body(output)
+        return actions.data.numpy()
 
 ########## Training the AI with Deep Convolutional Q-Learning ##########
 
