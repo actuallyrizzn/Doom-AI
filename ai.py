@@ -115,3 +115,10 @@ class AI:
 doom_env = image_preprocessing.PreprocessImage(SkipWrapper(4)(ToDiscrete("minimal")(gym.make("ppaquette/DoomCorridor-v0"))), width = 80, height = 80, grayscale = True)
 doom_env = gym.wrappers.Monitor(doom_env, "videos", force = True)
 number_actions = doom_env.action_space.n 
+
+# Building an AI
+
+# Create the brain and body objects
+cnn = CNN(number_actions)
+softmax_body = SoftmaxAIBody(temperature=1.0)
+ai = AI(brain=cnn, body=softmax_body)
