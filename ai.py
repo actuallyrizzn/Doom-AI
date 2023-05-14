@@ -127,3 +127,24 @@ ai = AI(brain=cnn, body=softmax_body)
 n_steps = experience_replay.NStepProgress(env=doom_env, ai=ai, n_step=10)
 memory = experience_replay.ReplayMemory(n_steps=n_steps, capacity=10000) # Capacity, memory up to the last capacity amount of steps
 
+# Implement eligibility trace
+def eligibility_trace(batch):  # n-step q learning
+    gamma = 0.99
+    inputs = [] 
+    targets = []
+    for series in batch:  
+        input = Variable(torch.from_numpy(np.array([series[0].state, series[-1].state], dtype = np.float32)))
+        # output = the prediction using the cnn
+        output = cnn(input)
+        cumulative_reward = 0.0 if series[-1].done else output[1].data.max()
+        for step in reversed(series[:-1]):
+            cumulative_reward = step.reward + gamma * cumulative_reward
+
+        # Get inputs and targets ready
+        state = series[0].state
+        target = output[0].data # q value of the input state from the first transition
+        target[series[0].action] = cumulative_reward
+        input.append(state)
+        targets.append(target)
+    
+    return torch.from_numpy(np.array(inputs, dtype = np.float32)), torch.stack(targets)
