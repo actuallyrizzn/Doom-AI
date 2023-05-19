@@ -178,3 +178,26 @@ class MovingAverage:
 
 ma = MovingAverage(100)
 
+# Training the AI
+loss = nn.MSELoss() 
+optimizer = optim.Adam(cnn.parameters(), lr = 0.001)
+nb_epochs = 100
+for epoch in range(1, nb_epochs + 1):
+    memory.run_steps(200)
+    for batch in memory.sample_batch(128): # taking larger batch size because only sampling 10 steps at a time
+        # Batch size is 128
+        inputs, targets = eligibility_trace(batch)
+        # Convert the inputs of the nn and the targets into torch variables
+        inputs, targets = Variable(inputs), Variable(targets)
+        # Get predictions
+        predictions = cnn(inputs)
+        # Get loss error
+        loss_error = loss(predictions, targets)
+        # Back propagate the loss error back into the nn
+        optimizer.zero_grad() # Initialize
+        loss_error.backward()
+        optimizer.step()
+    rewards_steps = n_steps.rewards_steps()
+    ma.add_reward_to_list(rewards_steps)
+    avg_reward = ma.average_rewards()
+    print("Epoch: %s, Average Reward: %s" % (str(epoch), str(avg_reward)))
