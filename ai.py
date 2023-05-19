@@ -148,3 +148,33 @@ def eligibility_trace(batch):  # n-step q learning
         targets.append(target)
     
     return torch.from_numpy(np.array(inputs, dtype = np.float32)), torch.stack(targets)
+
+# Making the moving average on 100 steps
+class MovingAverage:
+    def __init__(self, size):
+        self.list_of_rewards = []
+        self.size = size
+
+    def add_reward_to_list(self, rewards):
+        """
+        Add cumulative reward to list of rewards
+        """
+        # Case one: rewards is a list
+        if isinstance(rewards, list):
+            self.list_of_rewards += rewards
+        # Case two: reward is a single element
+        else:
+            self.list_of_rewards.append(rewards)
+
+        # Prevent list of rewards from exceeding 100
+        while len(self.list_of_rewards) > self.size:
+            del self.list_of_rewards[0] 
+
+    def average_rewards(self):
+        """
+        Return the mean of the list of rewards
+        """
+        return np.mean(self.list_of_rewards)
+
+ma = MovingAverage(100)
+
