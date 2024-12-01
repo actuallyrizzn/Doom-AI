@@ -1,203 +1,251 @@
 # AI for Doom
 
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.autograd import Variable
+# Importing necessary libraries
+import numpy as np  # For numerical computations and array manipulations
+import torch  # PyTorch library for building and training neural networks
+import torch.nn as nn  # PyTorch module for defining neural network layers
+import torch.nn.functional as F  # Provides functions for activation and loss functions
+import torch.optim as optim  # Optimizers for training neural networks
+from torch.autograd import Variable  # Handles automatic differentiation for backpropagation
 
-# Packages for OpenAI and Doom
-import gym
-from gym.wrappers import SkipWrapper
-from ppaquette_gym_doom.wrappers.action_space import ToDiscrete
+# Gym and Doom-specific libraries
+import gym  # OpenAI Gym for creating RL environments
+from gym.wrappers import SkipWrapper  # Wrapper to skip frames for faster training
+from ppaquette_gym_doom.wrappers.action_space import ToDiscrete  # Converts Doom's action space to discrete actions
 
-# Importing the other Python files
-import experience_replay, image_preprocessing
-
-
+# Importing helper modules from other files
+import experience_replay  # Experience replay logic for storing and sampling transitions
+import image_preprocessing  # Handles preprocessing of image inputs for the neural network
 
 ########## Building the AI ##########
 
-# Making the brain
-class CNN(nn.Module):
+# Defining the Convolutional Neural Network (CNN)
+class CNN(nn.Module):  # Inherits from PyTorch's nn.Module base class
+    """
+    This class defines the "brain" of the AI using a Convolutional Neural Network (CNN).
+    The network processes image inputs and outputs Q-values for each possible action.
+    """
 
     def __init__(self, number_actions):
-        """ 
-        CNN with 3 convolutional layers and 1 hidden layer 
         """
-        
-        super(CNN, self).__init__() # Activate inheritance to use tools from nn.Module
-        # Convolution connections
-        self.convolution1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5) # applies convolution to the input images
-        self.convolution2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3) 
-        self.convolution3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=2) 
-        # Flatten pixels obtained by the convolutions that were applied to get a vector
-        # Vector that will be used as the input for the NN
-        self.fc1 = nn.Linear(in_features=self.count_neurons(image_dim=(1, 80, 80)), out_features=40) # Full connection between input layer (vector) and hidden layer
-        self.fc2 = nn.Linear(in_features=40, out_features=number_actions) # Full connection between the hidden layer and output layer composed on the output neurons that correspond to a Q value of the possible actions
-        
+        Initialize the CNN with convolutional layers and fully connected layers.
+        :param number_actions: Number of actions the AI can choose from.
+        """
+        super(CNN, self).__init__()  # Call the constructor of the parent class (nn.Module)
+
+        # Define convolutional layers
+        self.convolution1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=5)  # First convolutional layer
+        self.convolution2 = nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3)  # Second convolutional layer
+        self.convolution3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=2)  # Third convolutional layer
+
+        # Calculate the number of neurons after convolutions to set the input size of the fully connected layer
+        flattened_size = self.count_neurons(image_dim=(1, 80, 80))  # For input images of size 80x80
+        self.fc1 = nn.Linear(in_features=flattened_size, out_features=40)  # Fully connected hidden layer
+        self.fc2 = nn.Linear(in_features=40, out_features=number_actions)  # Output layer for Q-values
+
     def count_neurons(self, *image_dim):
-        """ 
-        Count the number of pixels, which represent the number of neurons
-        in the vectpr after the convolutions are applied 
         """
-        kernal_size = 3
-        stride = 2
-        x = Variable(torch.rand(1, *image_dim)) # Input image
-        # Propagate image into the NN to reach the flattening layer to get the number of neurons we want
-        x = F.relu(F.max_pool2d(self.convolution1(x), kernal_size, stride)) # First convolutional layer with max pooling and ReLU activation
-        x = F.relu(F.max_pool2d(self.convolution2(x), kernal_size, stride)) # Propagate images from first to second convolutional layer
-        x = F.relu(F.max_pool2d(self.convolution3(x), kernal_size, stride)) # Propagate images from second to third convolutional layer
-        # Flatten pixels of third convolutional layer
-        # Flattening layer
-        return x.data.view(1, -1).size(1) # Takes all pixels of all the third layer channels and puts them in a vector (input of the fully connected network)
+        Dynamically calculate the number of neurons in the flattened layer after convolutions.
+        This ensures the network can adapt to different image sizes.
+        :param image_dim: Dimensions of the input image (channels, height, width).
+        :return: Number of neurons in the flattened vector.
+        """
+        kernal_size = 3  # Kernel size for max pooling
+        stride = 2  # Stride size for max pooling
+        x = Variable(torch.rand(1, *image_dim))  # Simulate a random input image to determine output size
+
+        # Apply convolutions and pooling to the simulated image
+        x = F.relu(F.max_pool2d(self.convolution1(x), kernal_size, stride))  # First convolution + max pooling
+        x = F.relu(F.max_pool2d(self.convolution2(x), kernal_size, stride))  # Second convolution + max pooling
+        x = F.relu(F.max_pool2d(self.convolution3(x), kernal_size, stride))  # Third convolution + max pooling
+
+        # Flatten the output to count the number of neurons
+        return x.data.view(1, -1).size(1)
 
     def forward(self, x):
         """
-        Propage the signals from the flattening layer to the hidden layer
-        of the fully connected network. Then activate the neurons of this hidden 
-        layer by breaking the linearity with ReLU. Lastly, propagate the signals
-        from the hidden layer to the output layer with the final output neurons.
-        :param x: input image
-        :return: output
+        Define the forward pass of the CNN. Takes an input image, processes it through the network,
+        and outputs Q-values for each action.
+        :param x: Input image.
+        :return: Q-values for all possible actions.
         """
-        kernal_size = 3
-        stride = 2
-        x = F.relu(F.max_pool2d(self.convolution1(x), kernal_size, stride)) # First convolutional layer with max pooling and ReLU activation
-        x = F.relu(F.max_pool2d(self.convolution2(x), kernal_size, stride)) # Propagate images from first to second convolutional layer
-        x = F.relu(F.max_pool2d(self.convolution3(x), kernal_size, stride)) # Propagate images from second to third convolutional layer
-        x = x.view(x.size(0), -1) # Flattening layer
-        x = F.relu(self.fc1(x)) # Pass signal with linear transmission and break linearity with rectifier function ReLU
-        x = self.fc2(x)
+        kernal_size = 3  # Kernel size for max pooling
+        stride = 2  # Stride size for max pooling
+        x = F.relu(F.max_pool2d(self.convolution1(x), kernal_size, stride))  # First convolution + max pooling
+        x = F.relu(F.max_pool2d(self.convolution2(x), kernal_size, stride))  # Second convolution + max pooling
+        x = F.relu(F.max_pool2d(self.convolution3(x), kernal_size, stride))  # Third convolution + max pooling
+        x = x.view(x.size(0), -1)  # Flatten the output
+        x = F.relu(self.fc1(x))  # Fully connected hidden layer
+        x = self.fc2(x)  # Output layer
         return x
 
-# Making the body; the action based on the output from the brain (using softmax)
+
+# Defining the "body" of the AI that selects actions based on Q-values
 class SoftmaxAIBody(nn.Module):
+    """
+    This class defines the body of the AI, which interprets the CNN's outputs (Q-values)
+    and selects actions probabilistically using the softmax function.
+    """
 
     def __init__(self, temperature):
+        """
+        Initialize the body with a temperature parameter for softmax.
+        :param temperature: Controls the randomness of action selection.
+        """
         super(SoftmaxAIBody, self).__init__()
-        self.T = temperature
+        self.T = temperature  # Temperature for softmax
 
     def forward(self, output_signals):
         """
-        Forward the output signal from the brain (the Q values contained in the output 
-        neurons of the output layer) to the body of the AI which will play the action
-        :param output_signals: The outputs from the brain
-        :return: The action to be played
+        Select an action based on the output Q-values.
+        :param output_signals: Q-values from the CNN.
+        :return: Action chosen by the AI.
         """
-        # use softmax to play the action
-        probabilities = F.softmax(output_signals * self.T) # distribution of probabilities for each of our Q-values which depend on the input image and each action
-        actions = probabilities.multinomial()
+        probabilities = F.softmax(output_signals * self.T)  # Compute probabilities using softmax
+        actions = probabilities.multinomial()  # Sample actions based on probabilities
         return actions
 
-# Assemble the brain and the body to make the AI 
+
+# Combining the CNN and the body to form the complete AI
 class AI:
-    
+    """
+    This class combines the brain (CNN) and the body (SoftmaxAIBody) to create a complete AI agent.
+    """
+
     def __init__(self, brain, body):
+        """
+        Initialize the AI with a brain and a body.
+        :param brain: CNN that outputs Q-values.
+        :param body: SoftmaxAIBody that selects actions based on Q-values.
+        """
         self.brain = brain
         self.body = body
-    
+
     def __call__(self, input_images):
         """
-        Take the images as input and propagate the signals in the brain
+        Take input images, process them through the brain and body, and return actions.
+        :param input_images: Preprocessed input images.
+        :return: Actions selected by the AI.
         """
-        # convert image into the right format
-        input = Variable(torch.from_numpy(np.array(input_images, dtype = np.float32)))
-        # take the brain and apply to input images
-        output = self.brain(input)
-        actions = self.body(output)
+        input = Variable(torch.from_numpy(np.array(input_images, dtype=np.float32)))  # Convert images to PyTorch format
+        output = self.brain(input)  # Get Q-values from the brain
+        actions = self.body(output)  # Select actions using the body
         return actions.data.numpy()
+
 
 ########## Training the AI with Deep Convolutional Q-Learning ##########
 
-# Getting the Doom environment
-doom_env = image_preprocessing.PreprocessImage(SkipWrapper(4)(ToDiscrete("minimal")(gym.make("ppaquette/DoomCorridor-v0"))), width = 80, height = 80, grayscale = True)
-doom_env = gym.wrappers.Monitor(doom_env, "videos", force = True)
-number_actions = doom_env.action_space.n 
+# Setting up the Doom environment
+doom_env = image_preprocessing.PreprocessImage(
+    SkipWrapper(4)(ToDiscrete("minimal")(gym.make("ppaquette/DoomCorridor-v0"))),
+    width=80,
+    height=80,
+    grayscale=True,
+)  # Preprocess the Doom environment (skip frames, resize images, convert to grayscale)
+doom_env = gym.wrappers.Monitor(doom_env, "videos", force=True)  # Record gameplay for analysis
+number_actions = doom_env.action_space.n  # Number of possible actions in the environment
 
-# Building an AI
+# Building the AI
+cnn = CNN(number_actions)  # Create the CNN
+softmax_body = SoftmaxAIBody(temperature=1.0)  # Create the Softmax-based action selector
+ai = AI(brain=cnn, body=softmax_body)  # Combine the brain and body to form the AI
 
-# Create the brain and body objects
-cnn = CNN(number_actions)
-softmax_body = SoftmaxAIBody(temperature=1.0)
-ai = AI(brain=cnn, body=softmax_body)
+# Setting up experience replay
+n_steps = experience_replay.NStepProgress(env=doom_env, ai=ai, n_step=10)  # Progress over 10 steps
+memory = experience_replay.ReplayMemory(n_steps=n_steps, capacity=10000)  # Replay memory with capacity 10,000
 
-# Setting up Experience Replay for learning every 10 steps
-n_steps = experience_replay.NStepProgress(env=doom_env, ai=ai, n_step=10)
-memory = experience_replay.ReplayMemory(n_steps=n_steps, capacity=10000) # Capacity, memory up to the last capacity amount of steps
+# Defining the eligibility trace for Q-learning updates
+def eligibility_trace(batch):
+    """
+    Compute eligibility traces for n-step Q-learning.
+    :param batch: Batch of transitions from experience replay.
+    :return: Inputs and target Q-values for training.
+    """
+    gamma = 0.99  # Discount factor
+    inputs = []  # Input states
+    targets = []  # Target Q-values
 
-# Implement eligibility trace
-def eligibility_trace(batch):  # n-step q learning
-    gamma = 0.99
-    inputs = [] 
-    targets = []
-    for series in batch:  
-        input = Variable(torch.from_numpy(np.array([series[0].state, series[-1].state], dtype = np.float32)))
-        # output = the prediction using the cnn
-        output = cnn(input)
-        cumulative_reward = 0.0 if series[-1].done else output[1].data.max()
+    for series in batch:  # Iterate through each n-step series
+        input = Variable(
+            torch.from_numpy(np.array([series[0].state, series[-1].state], dtype=np.float32))
+        )
+        output = cnn(input)  # Predict Q-values
+        cumulative_reward = 0.0 if series[-1].done else output[1].data.max()  # Compute cumulative reward
+
+        # Backtrack through the series to compute Q-value targets
         for step in reversed(series[:-1]):
             cumulative_reward = step.reward + gamma * cumulative_reward
 
-        # Get inputs and targets ready
-        state = series[0].state
-        target = output[0].data # q value of the input state from the first transition
-        target[series[0].action] = cumulative_reward
-        input.append(state)
-        targets.append(target)
-    
-    return torch.from_numpy(np.array(inputs, dtype = np.float32)), torch.stack(targets)
+        state = series[0].state  # Initial state
+        target = output[0].data  # Predicted Q-values for the initial state
+        target[series[0].action] = cumulative_reward  # Update the Q-value for the selected action
+        inputs.append(state)  # Store the input state
+        targets.append(target)  # Store the target Q-values
 
-# Making the moving average on 100 steps
+    return (
+        torch.from_numpy(np.array(inputs, dtype=np.float32)),
+        torch.stack(targets),
+    )  # Return inputs and targets
+
+
+# Moving average for tracking performance
 class MovingAverage:
+    """
+    Tracks the moving average of rewards over a specified window size.
+    """
+
     def __init__(self, size):
-        self.list_of_rewards = []
-        self.size = size
+        """
+        Initialize the moving average tracker.
+        :param size: Window size for the moving average.
+        """
+        self.list_of_rewards = []  # List of rewards
+        self.size = size  # Window size
 
     def add_reward_to_list(self, rewards):
         """
-        Add cumulative reward to list of rewards
+        Add new rewards to the list and maintain the window size.
+        :param rewards: List or single reward to add.
         """
-        # Case one: rewards is a list
-        if isinstance(rewards, list):
+        if isinstance(rewards, list):  # Case 1: List of rewards
             self.list_of_rewards += rewards
-        # Case two: reward is a single element
-        else:
+        else:  # Case 2: Single reward
             self.list_of_rewards.append(rewards)
 
-        # Prevent list of rewards from exceeding 100
+        # Remove old rewards if the list exceeds the window size
         while len(self.list_of_rewards) > self.size:
-            del self.list_of_rewards[0] 
+            del self.list_of_rewards[0]
 
     def average_rewards(self):
         """
-        Return the mean of the list of rewards
+        Compute the mean of the stored rewards.
+        :return: Mean reward.
         """
         return np.mean(self.list_of_rewards)
 
+
+# Initialize moving average tracker
 ma = MovingAverage(100)
 
 # Training the AI
-loss = nn.MSELoss() 
-optimizer = optim.Adam(cnn.parameters(), lr = 0.001)
-nb_epochs = 100
+loss = nn.MSELoss()  # Mean Squared Error loss function
+optimizer = optim.Adam(cnn.parameters(), lr=0.001)  # Adam optimizer for training
+nb_epochs = 100  # Number of training epochs
+
+# Training loop
 for epoch in range(1, nb_epochs + 1):
-    memory.run_steps(200)
-    for batch in memory.sample_batch(128): # taking larger batch size because only sampling 10 steps at a time
-        # Batch size is 128
-        inputs, targets = eligibility_trace(batch)
-        # Convert the inputs of the nn and the targets into torch variables
-        inputs, targets = Variable(inputs), Variable(targets)
-        # Get predictions
-        predictions = cnn(inputs)
-        # Get loss error
-        loss_error = loss(predictions, targets)
-        # Back propagate the loss error back into the nn
-        optimizer.zero_grad() # Initialize
-        loss_error.backward()
-        optimizer.step()
+    memory.run_steps(200)  # Collect 200 steps in memory
+    for batch in memory.sample_batch(128):  # Train on batches of size 128
+        inputs, targets = eligibility_trace(batch)  # Compute inputs and targets
+        inputs, targets = Variable(inputs), Variable(targets)  # Convert to PyTorch variables
+        predictions = cnn(inputs)  # Get predictions from the CNN
+        loss_error = loss(predictions, targets)  # Compute loss
+        optimizer.zero_grad()  # Reset gradients
+        loss_error.backward()  # Backpropagate the loss
+        optimizer.step()  # Update weights
+
+    # Compute and track average rewards
     rewards_steps = n_steps.rewards_steps()
     ma.add_reward_to_list(rewards_steps)
     avg_reward = ma.average_rewards()
-    print("Epoch: %s, Average Reward: %s" % (str(epoch), str(avg_reward)))
+    print(f"Epoch: {epoch}, Average Reward: {avg_reward}")  # Print progress
